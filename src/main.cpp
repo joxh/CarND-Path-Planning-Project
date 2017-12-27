@@ -197,7 +197,12 @@ int main() {
   	map_waypoints_dy.push_back(d_y);
   }
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  double ref_vel_Mph = 0.0; // Current reference velocity
+  int lane = 1;
+  
+			
+
+  h.onMessage([&lane, &ref_vel_Mph, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -242,11 +247,83 @@ int main() {
 
           	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
 
-			double ref_vel_Mph = 50.0;
-			int lane = 1;
+			double lane_width = 4; // Meters
+			double time_between_waypoints = 0.02; // seconds
 
+			double brake_acceleration = 5.0; // Meters per second square
+			double throttle_acceleration = 3.0; // meters per second squared
+			const double Mph_per_mps = 2.24;
 
-			double ref_vel_mps = ref_vel_Mph / 2.24;
+			double target_vel_Mph = 45.0;
+
+			double unsafe_range = 30.0; // Meters
+			double following_range = 60.0; //Meters
+			
+
+			double ref_vel_mps = ref_vel_Mph / Mph_per_mps;
+
+			double target_vel_mps = target_vel_Mph / Mph_per_mps;
+
+			// Do lane logic:
+
+			int prev_size = previous_path_x.size();
+
+			bool too_close = false;
+			bool open_on_left = lane > 0 ? true : false;
+			bool open_on_right = lane < 2 ? true: false;
+
+			double car_future_s = car_s;
+			if (prev_size > 0){
+				car_future_s = end_path_s;
+			}
+
+			for(int i = 0; i < sensor_fusion.size(); i++){
+				
+				double sense_vx = sensor_fusion[i][3];
+				double sense_vy = sensor_fusion[i][4];
+				double sense_s = sensor_fusion[i][5];
+				double sense_d = sensor_fusion[i][6];
+
+				double sense_speed = sqrt(sense_vx * sense_vx + sense_vy * sense_vy);
+
+				bool in_same_lane = sense_d < lane_width*(lane + 1) && sense_d > lane_width*lane;
+				bool in_lane_to_left = sense_d < lane_width*lane && sense_d > lane_width*(lane -1);
+				bool in_lane_to_right = sense_d < lane_width*(lane + 2) && sense_d > lane_width*(lane + 1);
+
+				double sense_future_s = sense_s + (sense_speed * prev_size * time_between_waypoints);
+				bool behind_sensed_car = sense_future_s > car_future_s;
+				bool within_unsafe_range = (sense_future_s - car_future_s) < unsafe_range;
+
+				bool within_blocking_distance = abs(sense_future_s - car_future_s) < unsafe_range;
+
+				if (in_same_lane){
+					if (behind_sensed_car && within_unsafe_range){
+						too_close = true;
+					}
+				}
+
+				if (in_lane_to_left && within_blocking_distance){
+					open_on_left = false;
+				}
+
+				if (in_lane_to_right && within_blocking_distance){
+					open_on_right = false;
+				}
+			}
+
+			if (too_close){
+				ref_vel_mps -= brake_acceleration * time_between_waypoints;
+				ref_vel_Mph = ref_vel_mps * Mph_per_mps;
+				if(open_on_left){
+					lane -= 1;
+				} else if(open_on_right){
+					lane += 1;
+				}
+
+			} else if (ref_vel_mps < target_vel_mps){
+				ref_vel_mps += throttle_acceleration * time_between_waypoints;
+				ref_vel_Mph = ref_vel_mps * Mph_per_mps;
+			}
 
 			// Create widely spaced (x,y) waypoints that implement the result of the planning logic
 			// They will serve as the anchor points for a spline:
@@ -259,7 +336,7 @@ int main() {
 			double ref_yaw = deg2rad(car_yaw); //This is returned in degrees
 
 			// Use remaining waypoints from last planned path in order to figure out tangent heading
-			int prev_size = previous_path_x.size();
+			
 			if(prev_size < 2){
 				// Need to construct previous points from car's heading
 				double implied_step_size = 1.0;
@@ -290,7 +367,7 @@ int main() {
 				ptsy.push_back(ref_y);
 			}
 			double waypoint_anchor_sep = 30; // Meters
-			double lane_width = 4; // Meters
+
 			
 			vector<double> next_wp_0 = getXY(car_s + 1.0 * waypoint_anchor_sep, lane_width * (0.5 + lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
 			vector<double> next_wp_1 = getXY(car_s + 2.0 * waypoint_anchor_sep, lane_width * (0.5 + lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
