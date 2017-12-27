@@ -241,15 +241,110 @@ int main() {
 
 
           	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
-			double dist_inc = 0.3;
-			for(int i = 0; i < 50; i++)
-			{
-				double next_s = car_s + (i + 1) * dist_inc;
-				double next_d = 6;
-				vector<double> xy = getXY(next_s, next_d, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+
+			double ref_vel_Mph = 50.0;
+			int lane = 1;
+
+
+			double ref_vel_mps = ref_vel_Mph / 2.24;
+
+			// Create widely spaced (x,y) waypoints that implement the result of the planning logic
+			// They will serve as the anchor points for a spline:
+			vector<double> ptsx;
+			vector<double> ptsy;
+
+			// Reference frame information for the car frame:
+			double ref_x = car_x;
+			double ref_y = car_y;
+			double ref_yaw = deg2rad(car_yaw); //This is returned in degrees
+
+			// Use remaining waypoints from last planned path in order to figure out tangent heading
+			int prev_size = previous_path_x.size();
+			if(prev_size < 2){
+				// Need to construct previous points from car's heading
+				double implied_step_size = 1.0;
+				double prev_car_x = car_x - implied_step_size * cos(ref_yaw);
+				double prev_car_y = car_y - implied_step_size * sin(ref_yaw);
+
+				ptsx.push_back(prev_car_x);
+				ptsx.push_back(car_x);
+
+				ptsy.push_back(prev_car_y);
+				ptsy.push_back(car_y);
+			} else {
+				// Can use the previous path directly
+
+				// Redefine reference position as being at the previous point
+				ref_x = previous_path_x[prev_size -1];
+				ref_y = previous_path_y[prev_size -1];
+
+				double ref_x_prev = previous_path_x[prev_size -2];
+				double ref_y_prev = previous_path_y[prev_size -2];
 				
-				next_x_vals.push_back(xy[0]);
-				next_y_vals.push_back(xy[1]);
+				ref_yaw = atan2(ref_y - ref_y_prev, ref_x - ref_x_prev);
+
+				ptsx.push_back(ref_x_prev);
+				ptsx.push_back(ref_x);
+				
+				ptsy.push_back(ref_y_prev);
+				ptsy.push_back(ref_y);
+			}
+			double waypoint_anchor_sep = 30; // Meters
+			double lane_width = 4; // Meters
+			
+			vector<double> next_wp_0 = getXY(car_s + 1.0 * waypoint_anchor_sep, lane_width * (0.5 + lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+			vector<double> next_wp_1 = getXY(car_s + 2.0 * waypoint_anchor_sep, lane_width * (0.5 + lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+			vector<double> next_wp_2 = getXY(car_s + 3.0 * waypoint_anchor_sep, lane_width * (0.5 + lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
+
+			ptsx.push_back(next_wp_0[0]);
+			ptsy.push_back(next_wp_0[1]);
+
+			ptsx.push_back(next_wp_1[0]);
+			ptsy.push_back(next_wp_1[1]);
+
+			ptsx.push_back(next_wp_2[0]);
+			ptsy.push_back(next_wp_2[1]);
+
+			// Change coordinate system to local car's reference frame
+			for (int i = 0; i < ptsx.size(); i++){
+				double shift_x = ptsx[i] - ref_x;
+				double shift_y = ptsy[i] - ref_y;
+
+				ptsx[i] = shift_x * cos(ref_yaw) + shift_y * sin(ref_yaw);
+				ptsy[i] = -shift_x * sin(ref_yaw) + shift_y * cos(ref_yaw); 
+			}
+
+			// create the spline
+			tk::spline path_spline_local;
+			path_spline_local.set_points(ptsx, ptsy);
+
+			int num_waypoints_to_return = 50;
+
+			double dist_inc = 0.3;
+			for(int i = 0; i < previous_path_x.size(); i++)
+			{
+				next_x_vals.push_back(previous_path_x[i]);
+				next_y_vals.push_back(previous_path_y[i]);
+			}
+
+			// Use pythagorean implementation to enforce speed limit
+			double tangential_displacement = 30.0; // meters
+			double perpendicular_displacement = path_spline_local(tangential_displacement); //Spline calculated
+			double total_distance = sqrt(tangential_displacement * tangential_displacement + perpendicular_displacement * perpendicular_displacement);
+
+			double x_add_on = 0.0;
+			double N = total_distance / (0.02 * ref_vel_mps);
+			for (int i = 0; i < num_waypoints_to_return - previous_path_x.size(); i++){
+				double x_point = x_add_on + tangential_displacement / N;
+				double y_point = path_spline_local(x_point);
+				x_add_on = x_point;
+
+				//convert the x_point and y_point to world_coordinates
+				double x_point_world = x_point * cos(ref_yaw) - y_point * sin(ref_yaw) + ref_x;
+				double y_point_world = x_point * sin(ref_yaw) + y_point * cos(ref_yaw) + ref_y;
+
+				next_x_vals.push_back(x_point_world);
+				next_y_vals.push_back(y_point_world);
 			}
 
           	msgJson["next_x"] = next_x_vals;
