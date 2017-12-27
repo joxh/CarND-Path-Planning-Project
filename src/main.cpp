@@ -366,7 +366,7 @@ int main() {
 				ptsy.push_back(ref_y_prev);
 				ptsy.push_back(ref_y);
 			}
-			double waypoint_anchor_sep = 30; // Meters
+			double waypoint_anchor_sep = 40.0; // Meters
 
 			
 			vector<double> next_wp_0 = getXY(car_s + 1.0 * waypoint_anchor_sep, lane_width * (0.5 + lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
