@@ -197,6 +197,7 @@ int main() {
   	map_waypoints_dy.push_back(d_y);
   }
 
+  // Persitent state planning variables
   double ref_vel_Mph = 0.0; // Current reference velocity
   int lane = 1;
   
@@ -247,17 +248,22 @@ int main() {
 
           	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
 
-			double lane_width = 4; // Meters
+			
 			double time_between_waypoints = 0.02; // seconds
+			int num_waypoints_to_return = 50;
+
+			double lane_width = 4; // Meters
+			double waypoint_anchor_sep = 40.0; // Meters
 
 			double brake_acceleration = 5.0; // Meters per second square
 			double throttle_acceleration = 3.0; // meters per second squared
 			const double Mph_per_mps = 2.24;
 
-			double target_vel_Mph = 45.0;
+			double target_vel_Mph = 45.0; // The speed the car would drive if unimpeded
 
 			double unsafe_range = 30.0; // Meters
-			double following_range = 60.0; //Meters
+			double unsafe_range_behind = 15.0; // Meters
+
 			
 
 			double ref_vel_mps = ref_vel_Mph / Mph_per_mps;
@@ -294,7 +300,9 @@ int main() {
 				bool behind_sensed_car = sense_future_s > car_future_s;
 				bool within_unsafe_range = (sense_future_s - car_future_s) < unsafe_range;
 
-				bool within_blocking_distance = abs(sense_future_s - car_future_s) < unsafe_range;
+				bool within_change_blocking_range_ahead = behind_sensed_car && within_unsafe_range;
+				bool within_change_blocking_range_behind = (~behind_sensed_car) && ((sense_future_s - car_future_s) > -unsafe_range_behind);
+				bool within_blocking_distance = within_change_blocking_range_ahead || within_change_blocking_range_behind;
 
 				if (in_same_lane){
 					if (behind_sensed_car && within_unsafe_range){
@@ -366,7 +374,7 @@ int main() {
 				ptsy.push_back(ref_y_prev);
 				ptsy.push_back(ref_y);
 			}
-			double waypoint_anchor_sep = 40.0; // Meters
+			
 
 			
 			vector<double> next_wp_0 = getXY(car_s + 1.0 * waypoint_anchor_sep, lane_width * (0.5 + lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
@@ -395,9 +403,7 @@ int main() {
 			tk::spline path_spline_local;
 			path_spline_local.set_points(ptsx, ptsy);
 
-			int num_waypoints_to_return = 50;
-
-			double dist_inc = 0.3;
+			// Fill the first spots with leftover waypoints
 			for(int i = 0; i < previous_path_x.size(); i++)
 			{
 				next_x_vals.push_back(previous_path_x[i]);
