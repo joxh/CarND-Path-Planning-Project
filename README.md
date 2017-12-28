@@ -2,6 +2,12 @@
 
 ## Individual Rubric Points
 
+> **The car is able to drive at least 4.32 miles without incident..**
+> The top right screen of the simulator shows the current/best miles driven without incident. Incidents include exceeding acceleration/jerk/speed, collision, and driving outside of the lanes. Each incident case is also listed below in more detail.
+
+The car has driven for over an hour without an incident. The only incidents were when a car from oncoming traffic had an accident and skidded into the ego car's lane.
+![Image of car travelling without incident for over an hour.](media/long_trip.jpg)
+
 >  **The car drives according to the speed limit.**
 > The car doesn't drive faster than the speed limit. Also the car isn't driving much slower than speed limit unless obstructed by traffic.
 
