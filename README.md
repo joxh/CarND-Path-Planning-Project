@@ -1,5 +1,7 @@
 # Path Planning Project
 
+This `README.md` document describes how the specific ruberic points were achieved, and describes the code model for generating the paths in detail.
+
 ## Individual Rubric Points
 
 > **The car is able to drive at least 4.32 miles without incident..**
