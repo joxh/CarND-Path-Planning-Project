@@ -263,10 +263,10 @@ int main() {
 			double throttle_acceleration = 3.0; // meters per second squared
 			const double Mph_per_mps = 2.24;
 
-			double target_vel_Mph = 45.0; // The speed the car would drive if unimpeded
+			double target_vel_Mph = 48.5; // The speed the car would drive if unimpeded
 			double max_allowed_a = 9.0;
 
-			double bring_back_ratio = .9;
+			double bring_back_ratio = .1;
 
 			double unsafe_range = 30.0; // Meters
 			double unsafe_range_behind = 15.0; // Meters
