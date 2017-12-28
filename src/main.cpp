@@ -160,6 +160,10 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
+double cyclic_difference(double sf, double si, double length_of_cycle){
+	return fmod((sf - si) + length_of_cycle/2, length_of_cycle) - length_of_cycle/2;
+}
+
 int main() {
   uWS::Hub h;
 
@@ -203,7 +207,7 @@ int main() {
   
 			
 
-  h.onMessage([&lane, &ref_vel_Mph, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&max_s, &lane, &ref_vel_Mph, &map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -253,13 +257,16 @@ int main() {
 			int num_waypoints_to_return = 50;
 
 			double lane_width = 4; // Meters
-			double waypoint_anchor_sep = 40.0; // Meters
+			double waypoint_anchor_sep = 30.0; // Meters
 
 			double brake_acceleration = 5.0; // Meters per second square
 			double throttle_acceleration = 3.0; // meters per second squared
 			const double Mph_per_mps = 2.24;
 
 			double target_vel_Mph = 45.0; // The speed the car would drive if unimpeded
+			double max_allowed_a = 9.0;
+
+			double bring_back_ratio = .9;
 
 			double unsafe_range = 30.0; // Meters
 			double unsafe_range_behind = 15.0; // Meters
@@ -297,12 +304,13 @@ int main() {
 				bool in_lane_to_right = sense_d < lane_width*(lane + 2) && sense_d > lane_width*(lane + 1);
 
 				double sense_future_s = sense_s + (sense_speed * prev_size * time_between_waypoints);
-				bool behind_sensed_car = sense_future_s > car_future_s;
-				bool within_unsafe_range = (sense_future_s - car_future_s) < unsafe_range;
+				bool behind_sensed_car = cyclic_difference(sense_future_s, car_future_s, max_s) > 0;
+				bool within_unsafe_range = cyclic_difference(sense_future_s, car_future_s, max_s) < unsafe_range;
 
-				bool within_change_blocking_range_ahead = behind_sensed_car && within_unsafe_range;
-				bool within_change_blocking_range_behind = (~behind_sensed_car) && ((sense_future_s - car_future_s) > -unsafe_range_behind);
-				bool within_blocking_distance = within_change_blocking_range_ahead || within_change_blocking_range_behind;
+				//bool within_change_blocking_range_ahead = behind_sensed_car && within_unsafe_range;
+				//bool within_change_blocking_range_behind = (~behind_sensed_car) && ((sense_future_s - car_future_s) > -unsafe_range_behind);
+				//bool within_blocking_distance = within_change_blocking_range_ahead || within_change_blocking_range_behind;
+				bool within_blocking_distance = abs(cyclic_difference(sense_future_s, car_future_s, max_s)) < unsafe_range;
 
 				if (in_same_lane){
 					if (behind_sensed_car && within_unsafe_range){
@@ -425,6 +433,38 @@ int main() {
 				//convert the x_point and y_point to world_coordinates
 				double x_point_world = x_point * cos(ref_yaw) - y_point * sin(ref_yaw) + ref_x;
 				double y_point_world = x_point * sin(ref_yaw) + y_point * cos(ref_yaw) + ref_y;
+				int num_added_vals = next_x_vals.size();
+				if (num_added_vals > 2){
+					double x_1 = next_x_vals[num_added_vals - 1];
+					double y_1 = next_y_vals[num_added_vals - 1];
+					double x_0 = next_x_vals[num_added_vals - 2];
+					double y_0 = next_y_vals[num_added_vals - 2];
+
+					double v_x_0 = (x_1 - x_0) / time_between_waypoints;
+					double v_y_0 = (y_1 - y_0) / time_between_waypoints;
+
+					double x_null_2 = x_1 + v_x_0 * time_between_waypoints;
+					double y_null_2 = y_1 + v_y_0 * time_between_waypoints;
+
+					double v_x_1 = (x_point_world - x_1) / time_between_waypoints;
+					double v_y_1 = (y_point_world - y_1) / time_between_waypoints;
+
+					double a_x_0 = (v_x_1 - v_x_0) / time_between_waypoints;
+					double a_y_0 = (v_y_1 - v_y_0) / time_between_waypoints;
+					double a_mag_0 = sqrt(a_x_0*a_x_0 + a_y_0*a_y_0);
+					while(a_mag_0 > max_allowed_a){
+						x_point_world = x_point_world + bring_back_ratio * (x_null_2 - x_point_world);
+						y_point_world = y_point_world + bring_back_ratio * (y_null_2 - y_point_world);
+
+						v_x_1 = (x_point_world - x_1) / time_between_waypoints;
+						v_y_1 = (y_point_world - y_1) / time_between_waypoints;
+
+						a_x_0 = (v_x_1 - v_x_0) / time_between_waypoints;
+						a_y_0 = (v_y_1 - v_y_0) / time_between_waypoints;
+						a_mag_0 = sqrt(a_x_0*a_x_0 + a_y_0*a_y_0);
+					}
+
+				}
 
 				next_x_vals.push_back(x_point_world);
 				next_y_vals.push_back(y_point_world);
